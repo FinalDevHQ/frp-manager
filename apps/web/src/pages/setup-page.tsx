@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useNavigate } from "react-router-dom"
 import {
   ArrowRight,
+  Boxes,
   CheckCircle2,
   Cog,
   FileText,
@@ -63,6 +64,12 @@ const strategyOptions: {
     icon: <Rocket className="h-4 w-4" />,
   },
   {
+    type: "docker-compose",
+    title: "Docker Compose",
+    description: "通过 docker compose restart/up/kill 操作 compose 中的 frpc service。",
+    icon: <Boxes className="h-4 w-4" />,
+  },
+  {
     type: "command",
     title: "自定义命令",
     description: "执行你自己的 shell 命令完成 reload。",
@@ -84,6 +91,8 @@ function defaultStrategy(type: ReloadStrategyType): ReloadStrategy {
       return { type: "systemctl", serviceName: "frpc", action: "reload", scope: "system" }
     case "docker":
       return { type: "docker", container: "frpc", action: "restart" }
+    case "docker-compose":
+      return { type: "docker-compose", composeFile: "", workingDir: "", service: "frpc", action: "restart" }
     case "command":
       return { type: "command", command: "" }
     case "none":
@@ -373,6 +382,49 @@ function StrategyFields({
               <SelectContent>
                 <SelectItem value="restart">restart（重启）</SelectItem>
                 <SelectItem value="kill-hup">kill -HUP（信号热重载）</SelectItem>
+              </SelectContent>
+            </Select>
+          </FormField>
+        </div>
+      )
+    case "docker-compose":
+      return (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <FormField label="compose 文件路径（可选）" className="sm:col-span-2">
+            <Input
+              value={strategy.composeFile ?? ""}
+              onChange={(e) => onChange({ ...strategy, composeFile: e.target.value || undefined })}
+              placeholder="/opt/frp/docker-compose.yml"
+              className="font-mono"
+            />
+          </FormField>
+          <FormField label="工作目录（可选）">
+            <Input
+              value={strategy.workingDir ?? ""}
+              onChange={(e) => onChange({ ...strategy, workingDir: e.target.value || undefined })}
+              placeholder="不填则取 compose 文件所在目录"
+              className="font-mono"
+            />
+          </FormField>
+          <FormField label="Service 名">
+            <Input
+              value={strategy.service}
+              onChange={(e) => onChange({ ...strategy, service: e.target.value })}
+              placeholder="frpc"
+            />
+          </FormField>
+          <FormField label="动作" className="sm:col-span-2">
+            <Select
+              value={strategy.action}
+              onValueChange={(v: string) =>
+                onChange({ ...strategy, action: v as "restart" | "up" | "kill-hup" })
+              }
+            >
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="restart">restart（重启 service）</SelectItem>
+                <SelectItem value="up">up -d（应用最新配置/镜像）</SelectItem>
+                <SelectItem value="kill-hup">kill -s HUP（信号热重载）</SelectItem>
               </SelectContent>
             </Select>
           </FormField>

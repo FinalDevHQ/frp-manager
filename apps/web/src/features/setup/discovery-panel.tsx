@@ -111,6 +111,29 @@ export function DiscoveryPanel({ onPickPath }: DiscoveryPanelProps) {
               ))}
             </Section>
           )}
+
+          {data.dockerCompose.length > 0 && (
+            <Section title="发现的 docker-compose 文件" empty="">
+              {data.dockerCompose.map((c) => (
+                <div
+                  key={c.composeFile}
+                  className="px-3 py-2 rounded-md bg-card text-xs space-y-1"
+                >
+                  <div className="font-mono truncate">{c.composeFile}</div>
+                  <div className="flex flex-wrap gap-1">
+                    {c.services.map((s) => (
+                      <span
+                        key={s}
+                        className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary font-mono"
+                      >
+                        {s}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </Section>
+          )}
         </>
       )}
 

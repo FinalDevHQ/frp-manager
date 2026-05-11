@@ -3,6 +3,7 @@ import { reloadNone } from "./none"
 import { reloadSystemctl } from "./systemctl"
 import { reloadAdminApi } from "./admin-api"
 import { reloadDocker } from "./docker"
+import { reloadDockerCompose } from "./docker-compose"
 import { reloadCommand } from "./command"
 
 export async function executeReload(strategy: ReloadStrategy): Promise<ReloadResult> {
@@ -15,6 +16,8 @@ export async function executeReload(strategy: ReloadStrategy): Promise<ReloadRes
       return reloadAdminApi(strategy)
     case "docker":
       return reloadDocker(strategy)
+    case "docker-compose":
+      return reloadDockerCompose(strategy)
     case "command":
       return reloadCommand(strategy)
   }

@@ -131,6 +131,11 @@ function validateProfile(p: DeploymentProfile | undefined): string[] {
       case "docker":
         if (!p.reload.container) errs.push("docker.container 不能为空")
         break
+      case "docker-compose":
+        if (!p.reload.service) errs.push("docker-compose.service 不能为空")
+        if (!["restart", "up", "kill-hup"].includes(p.reload.action))
+          errs.push("docker-compose.action 必须为 restart / up / kill-hup")
+        break
       case "command":
         if (!p.reload.command?.trim()) errs.push("command.command 不能为空")
         break

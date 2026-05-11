@@ -1,8 +1,10 @@
 import { promises as fs } from "node:fs"
 import os from "node:os"
 import path from "node:path"
+import { parse as parseYaml } from "yaml"
 import type {
   ConfigSuggestion,
+  DockerComposeSuggestion,
   DockerContainerSuggestion,
   ProfileSuggestions,
   SystemdServiceSuggestion,
@@ -20,12 +22,13 @@ const COMMON_CONFIG_PATHS = [
 ]
 
 export async function discover(): Promise<ProfileSuggestions> {
-  const [configPaths, systemdServices, dockerContainers] = await Promise.all([
+  const [configPaths, systemdServices, dockerContainers, dockerCompose] = await Promise.all([
     discoverConfigPaths(),
     discoverSystemdServices(),
     discoverDockerContainers(),
+    discoverDockerCompose(),
   ])
-  return { configPaths, systemdServices, dockerContainers }
+  return { configPaths, systemdServices, dockerContainers, dockerCompose }
 }
 
 export async function discoverConfigPaths(): Promise<ConfigSuggestion[]> {
@@ -94,6 +97,83 @@ export async function discoverDockerContainers(): Promise<DockerContainerSuggest
   } catch {
     return []
   }
+}
+
+/**
+ * 在常见位置查找 docker-compose.yml，并解析其中疑似 frpc 的 service。
+ * 不依赖 docker，纯 YAML 扫描。
+ */
+export async function discoverDockerCompose(): Promise<DockerComposeSuggestion[]> {
+  const home = os.homedir()
+  const dirs = [
+    "/opt/frp",
+    "/opt/frpc",
+    "/srv/frp",
+    "/srv/frpc",
+    "/etc/frp",
+    "/root",
+    home,
+    path.join(home, "frp"),
+    path.join(home, "frpc"),
+    path.join(home, "docker"),
+  ]
+  const fileNames = [
+    "docker-compose.yml",
+    "docker-compose.yaml",
+    "compose.yml",
+    "compose.yaml",
+  ]
+
+  const candidates: string[] = []
+  for (const dir of dirs) {
+    for (const name of fileNames) {
+      candidates.push(path.join(dir, name))
+    }
+  }
+
+  const found: DockerComposeSuggestion[] = []
+  await Promise.all(
+    candidates.map(async (p) => {
+      try {
+        const text = await fs.readFile(p, "utf8")
+        const services = extractFrpcServices(text)
+        if (services.length > 0) {
+          found.push({ composeFile: p, workingDir: path.dirname(p), services })
+        }
+      } catch {
+        // ignore
+      }
+    }),
+  )
+  return found
+}
+
+/**
+ * 从 docker-compose 文本里抽出疑似 frpc 的 service 名。
+ * 启发式：service 名或 image 含 "frpc"（大小写不敏感）。
+ */
+export function extractFrpcServices(yamlText: string): string[] {
+  if (!yamlText.trim()) return []
+  let doc: unknown
+  try {
+    doc = parseYaml(yamlText)
+  } catch {
+    return []
+  }
+  const services = (doc as { services?: Record<string, unknown> } | null)?.services
+  if (!services || typeof services !== "object") return []
+
+  const result: string[] = []
+  for (const [name, def] of Object.entries(services)) {
+    const image =
+      def && typeof def === "object" && "image" in def
+        ? String((def as { image?: unknown }).image ?? "")
+        : ""
+    if (/frpc/i.test(name) || /frpc/i.test(image)) {
+      result.push(name)
+    }
+  }
+  return result
 }
 
 async function fileExists(p: string): Promise<boolean> {

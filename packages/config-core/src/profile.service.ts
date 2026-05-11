@@ -82,6 +82,15 @@ function buildStrategyFromEnv(type: string): ReloadStrategy {
         container: process.env.FRPC_DOCKER_CONTAINER ?? "frpc",
         action: (process.env.FRPC_DOCKER_ACTION as "restart" | "kill-hup") ?? "restart",
       }
+    case "docker-compose":
+      return {
+        type: "docker-compose",
+        composeFile: process.env.FRPC_COMPOSE_FILE,
+        workingDir: process.env.FRPC_COMPOSE_DIR,
+        service: process.env.FRPC_COMPOSE_SERVICE ?? "frpc",
+        action:
+          (process.env.FRPC_COMPOSE_ACTION as "restart" | "up" | "kill-hup") ?? "restart",
+      }
     case "command":
       return {
         type: "command",

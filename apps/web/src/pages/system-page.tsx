@@ -10,6 +10,7 @@ const strategyLabel: Record<string, string> = {
   "admin-api": "Admin API",
   systemctl: "systemctl",
   docker: "Docker",
+  "docker-compose": "Docker Compose",
   command: "自定义命令",
   none: "仅保存",
 }

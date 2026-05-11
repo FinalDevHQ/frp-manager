@@ -52,6 +52,17 @@ async function testReloadStrategy(
     case "docker":
       if (!r.container) return { ok: false, message: "容器名不能为空" }
       return { ok: true, message: `将执行 docker ${r.action === "restart" ? "restart" : "kill -s HUP"} ${r.container}` }
+    case "docker-compose": {
+      if (!r.service) return { ok: false, message: "service 不能为空" }
+      const file = r.composeFile ? ` -f ${r.composeFile}` : ""
+      const op =
+        r.action === "restart"
+          ? `restart ${r.service}`
+          : r.action === "up"
+            ? `up -d ${r.service}`
+            : `kill -s HUP ${r.service}`
+      return { ok: true, message: `将执行 docker compose${file} ${op}` }
+    }
     case "command":
       if (!r.command?.trim()) return { ok: false, message: "命令不能为空" }
       return { ok: true, message: `将执行: ${r.command}` }

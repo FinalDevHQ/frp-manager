@@ -38,8 +38,17 @@ interface CommandResult {
 }
 
 export function runCommand(cmd: string, args: string[], timeoutMs: number): Promise<CommandResult> {
+  return runCommandIn(cmd, args, timeoutMs, undefined)
+}
+
+export function runCommandIn(
+  cmd: string,
+  args: string[],
+  timeoutMs: number,
+  cwd: string | undefined,
+): Promise<CommandResult> {
   return new Promise((resolve, reject) => {
-    const child = spawn(cmd, args, { windowsHide: true })
+    const child = spawn(cmd, args, { windowsHide: true, cwd })
     let stdout = ""
     let stderr = ""
     const timer = setTimeout(() => {
