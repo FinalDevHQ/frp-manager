@@ -1,6 +1,9 @@
-# syntax=docker/dockerfile:1.7
 # ─────────────────────────────────────────────────────────────────────────────
 # frp-manager 镜像
+#
+# 注意：故意不写 `# syntax=docker/dockerfile:X` 指令。带上它会让 BuildKit 去
+# docker.io 拉 dockerfile 前端镜像，国内/IPv6 网络下经常 timeout。Docker 24+
+# 内置的 BuildKit 已经原生支持 `RUN --mount=type=cache` 等特性，无需外部前端。
 #
 # 多阶段构建：
 #   1) deps      —— 安装包含 devDependencies 的依赖（构建 web 需要）
