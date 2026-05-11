@@ -1,0 +1,103 @@
+name: Build & Publish Docker image
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 触发条件
+#   - push 到 main / master：生成 latest + sha 标签
+#   - push tag v*（如 v1.2.3）：生成 1.2.3 / 1.2 / latest
+#   - PR：只做 build 不 push（验证构建不破）
+#   - 手动 workflow_dispatch：随时打一份镜像
+# ─────────────────────────────────────────────────────────────────────────────
+on:
+  push:
+    branches: [main, master]
+    tags: ['v*']
+    paths-ignore:
+      - '**.md'
+      - 'prd/**'
+      - '.windsurf/**'
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '额外的 tag（可选，例如 manual-2026-05）'
+        required: false
+        default: ''
+
+# 同一分支并发跑只保留最新一次
+concurrency:
+  group: docker-publish-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Docker Hub 上的镜像名。优先用 repo variable IMAGE_NAME，没设就用 username/frp-manager
+  IMAGE_NAME: ${{ vars.IMAGE_NAME || format('{0}/frp-manager', secrets.DOCKERHUB_USERNAME) }}
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Extract metadata (tags, labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_NAME }}
+          tags: |
+            # 默认分支 → latest
+            type=raw,value=latest,enable={{is_default_branch}}
+            # 分支名（main / master 等）
+            type=ref,event=branch
+            # PR 编号
+            type=ref,event=pr
+            # git short sha
+            type=sha,prefix=sha-,format=short
+            # vX.Y.Z 语义化版本
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            # 手动触发时的自定义 tag
+            type=raw,value=${{ github.event.inputs.tag }},enable=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag != '' }}
+          labels: |
+            org.opencontainers.image.title=frp-manager
+            org.opencontainers.image.description=可视化管理 frpc 配置（YAML / TOML）+ reload 编排
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # GitHub Runner 在境外，回上游源比走国内代理快
+          build-args: |
+            NODE_IMAGE=node:20-alpine
+            APK_MIRROR=
+            NPM_REGISTRY=
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: false
+
+      - name: Image digest
+        if: github.event_name != 'pull_request'
+        run: |
+          echo "Pushed tags:"
+          echo "${{ steps.meta.outputs.tags }}"
