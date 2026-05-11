@@ -16,7 +16,8 @@ export function createProxyRouter(ctx: AppContext): Router {
 
   router.get("/", async (_req: Request, res: Response, next: NextFunction) => {
     try {
-      const config = await ctx.configService.read()
+      const service = await ctx.requireConfigService()
+      const config = await service.read()
       res.json({ success: true, data: listProxies(config) })
     } catch (err) {
       next(err)
@@ -25,7 +26,8 @@ export function createProxyRouter(ctx: AppContext): Router {
 
   router.get<NameParams>("/:name", async (req, res, next) => {
     try {
-      const config = await ctx.configService.read()
+      const service = await ctx.requireConfigService()
+      const config = await service.read()
       const proxy = findProxy(config, req.params.name)
       if (!proxy) {
         res.status(404).json({ success: false, error: `Proxy "${req.params.name}" 不存在` })
@@ -40,9 +42,10 @@ export function createProxyRouter(ctx: AppContext): Router {
   router.post("/", async (req: Request, res: Response, next: NextFunction) => {
     try {
       const input = req.body as Proxy
-      const config = await ctx.configService.read()
+      const service = await ctx.requireConfigService()
+      const config = await service.read()
       const nextConfig = addProxy(config, input)
-      const result = await ctx.configService.save(nextConfig.proxies)
+      const result = await service.save(nextConfig.proxies)
       ctx.lastSavedAt = result.savedAt
       res.status(201).json({ success: true, data: input })
     } catch (err) {
@@ -53,9 +56,10 @@ export function createProxyRouter(ctx: AppContext): Router {
   router.put<NameParams>("/:name", async (req, res, next) => {
     try {
       const input = req.body as Proxy
-      const config = await ctx.configService.read()
+      const service = await ctx.requireConfigService()
+      const config = await service.read()
       const nextConfig = updateProxy(config, req.params.name, input)
-      const result = await ctx.configService.save(nextConfig.proxies)
+      const result = await service.save(nextConfig.proxies)
       ctx.lastSavedAt = result.savedAt
       res.json({ success: true, data: input })
     } catch (err) {
@@ -65,9 +69,10 @@ export function createProxyRouter(ctx: AppContext): Router {
 
   router.delete<NameParams>("/:name", async (req, res, next) => {
     try {
-      const config = await ctx.configService.read()
+      const service = await ctx.requireConfigService()
+      const config = await service.read()
       const nextConfig = deleteProxy(config, req.params.name)
-      const result = await ctx.configService.save(nextConfig.proxies)
+      const result = await service.save(nextConfig.proxies)
       ctx.lastSavedAt = result.savedAt
       res.json({ success: true, data: { name: req.params.name } })
     } catch (err) {

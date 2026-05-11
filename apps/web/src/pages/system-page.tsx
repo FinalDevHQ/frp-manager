@@ -1,15 +1,28 @@
 import { useMutation, useQuery } from "@tanstack/react-query"
-import { RefreshCw } from "lucide-react"
+import { useNavigate } from "react-router-dom"
+import { Pencil, RefreshCw } from "lucide-react"
 import { toast } from "sonner"
-import { systemApi } from "@/lib/api"
+import { profileApi, systemApi } from "@/lib/api"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
+
+const strategyLabel: Record<string, string> = {
+  "admin-api": "Admin API",
+  systemctl: "systemctl",
+  docker: "Docker",
+  command: "自定义命令",
+  none: "仅保存",
+}
 
 export function SystemPage() {
-  const { data, refetch } = useQuery({
+  const navigate = useNavigate()
+  const { data: status, refetch } = useQuery({
     queryKey: ["system-status"],
     queryFn: systemApi.status,
+  })
+  const { data: profile } = useQuery({
+    queryKey: ["profile"],
+    queryFn: profileApi.get,
   })
 
   const reload = useMutation({
@@ -27,30 +40,39 @@ export function SystemPage() {
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">System</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          frpc 进程控制与状态
+          部署配置与 frpc 控制
         </p>
       </div>
 
       <Card>
-        <CardHeader>
-          <CardTitle>状态</CardTitle>
-          <CardDescription>当前 frpc.yml 路径与最近一次保存</CardDescription>
+        <CardHeader className="flex-row items-center justify-between space-y-0">
+          <div>
+            <CardTitle>部署 Profile</CardTitle>
+            <CardDescription>当前 frpc.yml 路径与 reload 策略</CardDescription>
+          </div>
+          <Button variant="outline" size="sm" onClick={() => navigate("/setup")}>
+            <Pencil className="h-4 w-4 mr-1.5" />
+            编辑
+          </Button>
         </CardHeader>
         <CardContent className="space-y-3">
-          <Row label="配置文件" value={<code className="text-xs">{data?.configPath ?? "-"}</code>} />
           <Row
-            label="进程状态"
+            label="配置文件"
+            value={<code className="text-xs">{profile?.configPath ?? "-"}</code>}
+          />
+          <Row
+            label="Reload 策略"
             value={
-              <Badge variant={data?.running ? "default" : "secondary"}>
-                {data?.running ? "running" : "unknown"}
-              </Badge>
+              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-primary/10 text-primary">
+                {strategyLabel[profile?.reload.type ?? ""] ?? "-"}
+              </span>
             }
           />
           <Row
             label="上次保存"
             value={
-              data?.lastSavedAt
-                ? new Date(data.lastSavedAt).toLocaleString()
+              status?.lastSavedAt
+                ? new Date(status.lastSavedAt).toLocaleString()
                 : "（尚未保存）"
             }
           />
@@ -60,11 +82,11 @@ export function SystemPage() {
       <Card>
         <CardHeader>
           <CardTitle>Reload</CardTitle>
-          <CardDescription>触发 frpc 重新加载配置（v1 占位，暂未生效）</CardDescription>
+          <CardDescription>根据当前策略触发 frpc 重新加载配置</CardDescription>
         </CardHeader>
         <CardContent>
           <Button onClick={() => reload.mutate()} disabled={reload.isPending}>
-            <RefreshCw className="h-4 w-4 mr-2" />
+            <RefreshCw className={"h-4 w-4 mr-2 " + (reload.isPending ? "animate-spin" : "")} />
             {reload.isPending ? "Reloading..." : "Reload frpc"}
           </Button>
         </CardContent>

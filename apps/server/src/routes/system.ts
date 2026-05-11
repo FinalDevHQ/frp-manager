@@ -1,32 +1,44 @@
-import { Router, type Request, type Response } from "express"
+import { Router, type Request, type Response, type NextFunction } from "express"
+import { executeReload } from "@frp-manager/config-core"
 import type { AppContext } from "../context"
 
 export function createSystemRouter(ctx: AppContext): Router {
   const router = Router()
 
   /**
-   * v1：占位实现，不实际 reload。
-   * 后续接入 systemctl / child_process 重启逻辑。
+   * 根据当前 profile.reload 策略执行 reload。
+   * 无 profile 时返回 412 PROFILE_NOT_CONFIGURED。
    */
-  router.post("/reload", (_req: Request, res: Response) => {
-    res.json({
-      success: true,
-      data: {
-        reloaded: false,
-        message: "Reload 暂未实现，v1 仅保存配置文件",
-      },
-    })
+  router.post("/reload", async (_req: Request, res: Response, next: NextFunction) => {
+    try {
+      const profile = await ctx.getProfile()
+      if (!profile) {
+        const err = new Error("PROFILE_NOT_CONFIGURED")
+        err.name = "ProfileNotConfiguredError"
+        throw err
+      }
+      const result = await executeReload(profile.reload)
+      ctx.lastReload = { ...result, at: Date.now() }
+      res.json({ success: true, data: result })
+    } catch (err) {
+      next(err)
+    }
   })
 
-  router.get("/status", (_req: Request, res: Response) => {
-    res.json({
-      success: true,
-      data: {
-        running: false,
-        configPath: ctx.configService.getConfigPath(),
-        lastSavedAt: ctx.lastSavedAt,
-      },
-    })
+  router.get("/status", async (_req: Request, res: Response, next: NextFunction) => {
+    try {
+      const profile = await ctx.getProfile()
+      res.json({
+        success: true,
+        data: {
+          running: false,
+          configPath: profile?.configPath ?? "",
+          lastSavedAt: ctx.lastSavedAt,
+        },
+      })
+    } catch (err) {
+      next(err)
+    }
   })
 
   return router

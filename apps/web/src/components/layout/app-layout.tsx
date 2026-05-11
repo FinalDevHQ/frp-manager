@@ -1,11 +1,12 @@
 import { NavLink, Outlet } from "react-router-dom"
-import { FileCode2, ListTree, Server, Zap } from "lucide-react"
+import { FileCode2, ListTree, Server, Settings, Zap } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 const navItems = [
   { to: "/proxies", label: "Proxies", icon: ListTree },
   { to: "/preview", label: "YAML Preview", icon: FileCode2 },
   { to: "/system", label: "System", icon: Server },
+  { to: "/setup", label: "Setup", icon: Settings },
 ]
 
 export function AppLayout() {

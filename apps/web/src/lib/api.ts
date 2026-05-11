@@ -2,9 +2,20 @@ import axios, { AxiosError } from "axios"
 import type {
   ApiResponse,
   ConfigPreview,
+  DeploymentProfile,
+  ProfileSuggestions,
+  ProfileTestResult,
   Proxy,
+  ReloadResult,
   SystemStatus,
 } from "@frp-manager/shared"
+
+export class ProfileNotConfiguredError extends Error {
+  constructor() {
+    super("PROFILE_NOT_CONFIGURED")
+    this.name = "ProfileNotConfiguredError"
+  }
+}
 
 export const api = axios.create({
   baseURL: "/api",
@@ -22,10 +33,20 @@ async function unwrap<T>(promise: Promise<{ data: ApiResponse<T> }>): Promise<T>
   } catch (err) {
     if (err instanceof AxiosError) {
       const message = (err.response?.data as ApiResponse<unknown> | undefined)?.error
+      if (err.response?.status === 412 && message === "PROFILE_NOT_CONFIGURED") {
+        throw new ProfileNotConfiguredError()
+      }
       throw new Error(message ?? err.message)
     }
     throw err
   }
+}
+
+/** 允许 null 的 unwrap，用于 profile 接口（未配置返回 null） */
+async function unwrapNullable<T>(promise: Promise<{ data: ApiResponse<T | null> }>): Promise<T | null> {
+  const res = await promise
+  if (!res.data.success) throw new Error(res.data.error ?? "Unknown error")
+  return res.data.data ?? null
 }
 
 export const proxyApi = {
@@ -50,6 +71,32 @@ export const configApi = {
 
 export const systemApi = {
   status: () => unwrap<SystemStatus>(api.get("/system/status")),
-  reload: () =>
-    unwrap<{ reloaded: boolean; message: string }>(api.post("/system/reload")),
+  reload: () => unwrap<ReloadResult>(api.post("/system/reload")),
+}
+
+export interface WebServerInfo {
+  enabled: boolean
+  addr?: string
+  port?: number
+  user?: string
+  password?: string
+  baseUrl?: string
+}
+
+export const profileApi = {
+  get: () => unwrapNullable<DeploymentProfile>(api.get("/profile")),
+  save: (profile: DeploymentProfile) =>
+    unwrap<DeploymentProfile>(api.put("/profile", profile)),
+  test: (profile: DeploymentProfile) =>
+    unwrap<ProfileTestResult>(api.post("/profile/test", profile)),
+  inspectAdmin: (configPath: string) =>
+    unwrap<WebServerInfo>(api.post("/profile/inspect-admin", { configPath })),
+  enableAdmin: (payload: {
+    configPath: string
+    addr?: string
+    port?: number
+    user?: string
+    password?: string
+  }) => unwrap<WebServerInfo>(api.post("/profile/enable-admin", payload)),
+  suggestions: () => unwrap<ProfileSuggestions>(api.get("/profile/suggestions")),
 }

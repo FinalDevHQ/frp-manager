@@ -12,10 +12,11 @@ export function createConfigRouter(ctx: AppContext): Router {
    */
   router.post("/preview", async (req: Request, res: Response, next: NextFunction) => {
     try {
+      const service = await ctx.requireConfigService()
       const proxies = (req.body?.proxies as Proxy[] | undefined) ?? null
-      const current = await ctx.configService.readRaw()
-      const targetProxies = proxies ?? (await ctx.configService.read()).proxies
-      const next = await ctx.configService.preview(targetProxies)
+      const current = await service.readRaw()
+      const targetProxies = proxies ?? (await service.read()).proxies
+      const next = await service.preview(targetProxies)
       res.json({
         success: true,
         data: {
@@ -32,7 +33,8 @@ export function createConfigRouter(ctx: AppContext): Router {
   /** 返回当前已保存的 frpc.yml 文本 */
   router.get("/yaml", async (_req: Request, res: Response, next: NextFunction) => {
     try {
-      const yaml = await ctx.configService.readRaw()
+      const service = await ctx.requireConfigService()
+      const yaml = await service.readRaw()
       res.json({ success: true, data: { yaml } })
     } catch (err) {
       next(err)
@@ -47,7 +49,8 @@ export function createConfigRouter(ctx: AppContext): Router {
         res.status(400).json({ success: false, error: "请求体必须包含 proxies 数组" })
         return
       }
-      const result = await ctx.configService.save(proxies)
+      const service = await ctx.requireConfigService()
+      const result = await service.save(proxies)
       ctx.lastSavedAt = result.savedAt
       res.json({
         success: true,

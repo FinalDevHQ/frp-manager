@@ -1,4 +1,10 @@
 import type { Proxy } from "./proxy"
+import type {
+  DeploymentProfile,
+  ProfileSuggestions,
+  ProfileTestResult,
+  ReloadResult,
+} from "./profile"
 
 export interface ApiResponse<T> {
   success: boolean
@@ -29,5 +35,13 @@ export type DeleteProxyResponse = ApiResponse<{ name: string }>
 export type ConfigPreviewResponse = ApiResponse<ConfigPreview>
 export type ConfigYamlResponse = ApiResponse<{ yaml: string }>
 export type ConfigSaveResponse = ApiResponse<{ savedAt: number; backupPath: string }>
-export type SystemReloadResponse = ApiResponse<{ reloaded: boolean; message: string }>
+export type SystemReloadResponse = ApiResponse<ReloadResult>
 export type SystemStatusResponse = ApiResponse<SystemStatus>
+
+export type GetProfileResponse = ApiResponse<DeploymentProfile | null>
+export type PutProfileResponse = ApiResponse<DeploymentProfile>
+export type ProfileTestResponse = ApiResponse<ProfileTestResult>
+export type ProfileSuggestionsResponse = ApiResponse<ProfileSuggestions>
+export type EnableAdminResponse = ApiResponse<{ baseUrl: string }>
+
+export const PROFILE_NOT_CONFIGURED = "PROFILE_NOT_CONFIGURED"

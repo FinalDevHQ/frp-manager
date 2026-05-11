@@ -1,7 +1,12 @@
 import type { ErrorRequestHandler } from "express"
 import { ValidationException } from "@frp-manager/config-core"
+import { PROFILE_NOT_CONFIGURED } from "@frp-manager/shared"
 
 export const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
+  if (err instanceof Error && err.name === "ProfileNotConfiguredError") {
+    res.status(412).json({ success: false, error: PROFILE_NOT_CONFIGURED })
+    return
+  }
   if (err instanceof ValidationException) {
     res.status(400).json({
       success: false,
