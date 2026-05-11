@@ -11,11 +11,11 @@ services:
   frp-manager:
     build:
       context: .
-      # 国内构建可取消下面的注释切换镜像源：
-      # args:
-      #   NODE_IMAGE: docker.m.daocloud.io/library/node:20-alpine
-      #   APK_MIRROR: https://mirrors.tuna.tsinghua.edu.cn/alpine
-      #   NPM_REGISTRY: https://registry.npmmirror.com
+      # 国内构建：使用国内镜像源加速。如在海外构建，把 args 整段注释掉即可。
+      args:
+        NODE_IMAGE: docker.m.daocloud.io/library/node:20-alpine
+        APK_MIRROR: https://mirrors.tuna.tsinghua.edu.cn/alpine
+        NPM_REGISTRY: https://registry.npmmirror.com
     image: frp-manager:latest
     container_name: frp-manager
     restart: unless-stopped
