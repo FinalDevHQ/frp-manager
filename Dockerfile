@@ -18,7 +18,7 @@ ARG NPM_REGISTRY=
 
 # 可选：切换 alpine 源（此阶段暂不需要 apk，但 base 镜像里 npm 自身偶尔会触发；保险起见）
 RUN if [ -n "$APK_MIRROR" ]; then \
-      sed -i "s|https\\?://dl-cdn.alpinelinux.org|${APK_MIRROR}|g" /etc/apk/repositories; \
+      sed -i "s|https\?://dl-cdn.alpinelinux.org/alpine|${APK_MIRROR}|g" /etc/apk/repositories; \
     fi
 # 可选：切换 npm registry
 RUN if [ -n "$NPM_REGISTRY" ]; then npm config set registry "$NPM_REGISTRY"; fi
@@ -58,7 +58,7 @@ ENV NODE_ENV=production \
 
 # 切换 alpine 源（如有），再装系统依赖
 RUN if [ -n "$APK_MIRROR" ]; then \
-      sed -i "s|https\\?://dl-cdn.alpinelinux.org|${APK_MIRROR}|g" /etc/apk/repositories; \
+      sed -i "s|https\?://dl-cdn.alpinelinux.org/alpine|${APK_MIRROR}|g" /etc/apk/repositories; \
     fi \
  && apk add --no-cache docker-cli docker-cli-compose tini curl
 
