@@ -32,9 +32,19 @@ services:
       # FRPC_CONFIG_PATH: /opt/dockerApp/frpc/frpc.toml
       # FRPC_RELOAD_TYPE: admin-api
       # FRPC_ADMIN_BASE_URL: http://host.docker.internal:7400
+      #
+      # ─── 安全相关（强烈建议设置） ─────────────────────────────────
+      # 1) 路径白名单：Setup 页填的 configPath 必须在这些根目录下，否则 403。
+      #    多个值用分号 ; 分隔。
+      # FRP_MANAGER_ALLOWED_CONFIG_ROOTS: "/opt/dockerApp/frpc"
+      # 2) CORS：默认禁跨域；UI 与 API 同域时无需设置。
+      # FRP_MANAGER_CORS_ORIGINS: "https://frp.example.com"
     volumes:
       # 1) 持久化 profile.json
       - ./runtime:/app/runtime
+
+      # 1.1) 持久化 auth.json（登录密码 hash + token 签名密钥）
+      - ./config:/app/config
 
       # 2) 把宿主上 frpc 目录挂进容器，宿主与容器路径保持一致
       - /opt/dockerApp/frpc:/opt/dockerApp/frpc

@@ -3,16 +3,38 @@ import { existsSync } from "node:fs"
 import express from "express"
 import cors from "cors"
 import { createApiRouter } from "./routes"
+import { createAuthRouter } from "./routes/auth"
+import { healthRouter } from "./routes/health"
 import { createContext } from "./context"
 import { errorHandler } from "./middleware/error"
+import { createAuthMiddleware } from "./middleware/auth"
+import { AuthService, resolveAuthPath } from "./auth"
+import { getAllowedRoots, isPathRestrictionConfigured } from "./security/paths"
 
 const app = express()
 const PORT = Number(process.env.PORT) || 3000
-const ctx = createContext()
+const authService = new AuthService(resolveAuthPath())
+const ctx = createContext(authService)
 
-app.use(cors())
+// CORS：默认禁止跨域（同源访问不受影响），通过 FRP_MANAGER_CORS_ORIGINS 显式放行
+const corsOriginsRaw = (process.env.FRP_MANAGER_CORS_ORIGINS ?? "").trim()
+const corsOrigins = corsOriginsRaw
+  ? corsOriginsRaw.split(",").map((s) => s.trim()).filter(Boolean)
+  : []
+if (corsOrigins.length > 0) {
+  app.use(cors({ origin: corsOrigins, credentials: false }))
+} else {
+  // 同源放行；跨域请求得不到 Access-Control-Allow-Origin，会被浏览器拦下
+  app.use(cors({ origin: false }))
+}
 app.use(express.json())
 
+// 公开端点（无需登录）
+app.use("/api/health", healthRouter)
+app.use("/api/auth", createAuthRouter(authService))
+
+// 守卫：以下所有 /api/* 路由必须携带有效 token
+app.use("/api", createAuthMiddleware(authService))
 app.use("/api", createApiRouter(ctx))
 
 /**
@@ -34,6 +56,18 @@ app.use(errorHandler)
 app.listen(PORT, async () => {
   console.log(`[FRP Manager] Server running on http://localhost:${PORT}`)
   console.log(`[FRP Manager] Profile path: ${ctx.profileService.getPath()}`)
+  console.log(`[FRP Manager] Auth path:    ${authService.getPath()}`)
+  // 提前触发 auth 配置初始化（首次启动会写默认密码 / 升级旧格式 / 警告默认密码）
+  await authService.load()
+  if (isPathRestrictionConfigured()) {
+    console.log(
+      `[FRP Manager] Path restriction enabled, allowed roots: ${getAllowedRoots().join(", ")}`,
+    )
+  } else {
+    console.warn(
+      `[FRP Manager] WARNING: FRP_MANAGER_ALLOWED_CONFIG_ROOTS 未配置，configPath 入参不做白名单校验。生产环境强烈建议设置。`,
+    )
+  }
   const profile = await ctx.getProfile()
   if (profile) {
     console.log(`[FRP Manager] Config path: ${profile.configPath}`)
