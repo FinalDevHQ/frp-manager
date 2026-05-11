@@ -1,0 +1,44 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# 生产环境部署模板 —— 从 Docker Hub 拉镜像（CI 已经把镜像推上去了）
+#
+# 用法：
+#   1. 创建 .env，至少写：
+#        IMAGE=youruser/frp-manager
+#        TAG=latest
+#   2. docker compose -f docker-compose.prod.yml pull
+#   3. docker compose -f docker-compose.prod.yml up -d
+#
+# 升级：
+#   docker compose -f docker-compose.prod.yml pull
+#   docker compose -f docker-compose.prod.yml up -d
+#
+# 国内拉 Docker Hub 慢/不通时，在 /etc/docker/daemon.json 加 registry-mirrors：
+#   {"registry-mirrors": ["https://docker.m.daocloud.io", "https://docker.1ms.run"]}
+#   sudo systemctl restart docker
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+  frp-manager:
+    image: ${IMAGE:-youruser/frp-manager}:${TAG:-latest}
+    container_name: frp-manager
+    platform: linux/amd64
+    pull_policy: always
+    restart: unless-stopped
+    ports:
+      - "${HOST_PORT:-3000}:3000"
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+      # 可选：强制锁定 profile，启动即可用
+      # FRPC_CONFIG_PATH: /opt/dockerApp/frpc/frpc.toml
+      # FRPC_RELOAD_TYPE: admin-api
+      # FRPC_ADMIN_BASE_URL: http://host.docker.internal:7400
+    volumes:
+      # 1) 持久化 profile.json
+      - ./runtime:/app/runtime
+
+      # 2) 把宿主上 frpc 目录挂进容器，宿主与容器路径保持一致
+      - /opt/dockerApp/frpc:/opt/dockerApp/frpc
+
+      # 3) reload 策略 = docker / docker-compose 时挂 socket
+      - /var/run/docker.sock:/var/run/docker.sock
+      # - /opt/frp/docker-compose.yml:/opt/frp/docker-compose.yml
