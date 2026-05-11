@@ -1,22 +1,19 @@
 name: Build & Publish Docker image
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 触发条件
-#   - push 到 main / master：生成 latest + sha 标签
+# 触发条件（只有 main 分支会跑 CI/CD，其它分支推送不触发）
+#   - push 到 main：生成 latest + sha 标签
 #   - push tag v*（如 v1.2.3）：生成 1.2.3 / 1.2 / latest
-#   - PR：只做 build 不 push（验证构建不破）
 #   - 手动 workflow_dispatch：随时打一份镜像
 # ─────────────────────────────────────────────────────────────────────────────
 on:
   push:
-    branches: [main, master]
+    branches: [main]
     tags: ['v*']
     paths-ignore:
       - '**.md'
       - 'prd/**'
       - '.windsurf/**'
-  pull_request:
-    branches: [main, master]
   workflow_dispatch:
     inputs:
       tag:
