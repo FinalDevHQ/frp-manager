@@ -1,0 +1,64 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# frp-manager 部署模板（默认面向国内网络环境）
+#
+# 用法 A：在 Debian 服务器上现地构建（推荐）
+#   docker compose up -d --build
+#
+# 用法 B：在别的机器构建好后离线导入 Debian
+#   # 构建机（建议直接在 Debian 同架构机器上构建；Windows/Mac 用 buildx 跨架构）
+#   docker compose build
+#   docker save frp-manager:latest | gzip > frp-manager.tar.gz
+#   # 拷到 Debian
+#   scp frp-manager.tar.gz user@debian:/opt/frp/
+#   # 在 Debian 上
+#   gunzip -c frp-manager.tar.gz | docker load
+#   docker compose up -d
+#
+# 镜像源覆盖（写 .env 即可，无需改本文件）：
+#   NODE_IMAGE=docker.1ms.run/library/node:20-alpine
+#   APK_MIRROR=https://mirrors.aliyun.com/alpine
+#   NPM_REGISTRY=https://registry.npmmirror.com
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+  frp-manager:
+    image: frp-manager:latest
+    container_name: frp-manager
+    # 锁定 amd64：避免在 ARM 机器上误构建出 arm64 镜像然后传到 x86 Debian 跑不动。
+    # 如果你的 Debian 本身是 ARM（树莓派等），把下面这行改成 linux/arm64 或注释掉。
+    platform: linux/amd64
+    build:
+      context: .
+      dockerfile: Dockerfile
+      # 不传也行，Dockerfile 内置了同样的国内默认值；这里写出来便于 .env 覆盖。
+      args:
+        NODE_IMAGE:   ${NODE_IMAGE:-docker.m.daocloud.io/library/node:20-alpine}
+        APK_MIRROR:   ${APK_MIRROR:-https://mirrors.tuna.tsinghua.edu.cn/alpine}
+        NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmmirror.com}
+    # 永远用本地构建的镜像，避免 compose 跑去 docker hub 拉 frp-manager:latest
+    pull_policy: build
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+      # 容器内默认值已设置，按需覆盖：
+      # PORT: 3000
+      # FRP_MANAGER_PROFILE_PATH: /app/runtime/profile.json
+      # 也可强制锁定 profile：FRPC_CONFIG_PATH / FRPC_RELOAD_TYPE / FRPC_ADMIN_BASE_URL 等
+    volumes:
+      # 1) 持久化 profile.json（必须）
+      - ./runtime:/app/runtime
+
+      # 2) 把宿主机上 frpc 的「整个目录」挂进容器，宿主与容器路径保持一致。
+      #    Setup 页填的 configPath 直接写宿主真实路径即可（例如
+      #    /opt/dockerApp/frpc/frpc.toml）。挂目录而不是单文件的原因：
+      #      a. 保存时生成的备份 <name>.bak.<ts> 写在同目录，挂单文件会失败
+      #      b. 宿主端 mv / vim :w 会换 inode，挂单文件需要重启容器才能感知
+      - /opt/dockerApp/frpc:/opt/dockerApp/frpc
+
+      # 3) reload 策略 = docker / docker-compose 时需要的挂载
+      - /var/run/docker.sock:/var/run/docker.sock
+      # - /opt/frp/docker-compose.yml:/opt/frp/docker-compose.yml
+
+      # 4) systemctl 策略不推荐在容器内使用，改用 admin-api / docker / docker-compose

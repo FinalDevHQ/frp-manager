@@ -69,3 +69,12 @@ temp/
 # Project-specific runtime data
 runtime/*
 !runtime/.gitkeep
+
+# frpc.yml backups
+*.bak
+*.bak.*
+config/*.bak.*
+
+# Screenshots accidentally dropped into assets
+apps/web/src/assets/PixPin_*.png
+apps/web/src/assets/Screenshot*.png

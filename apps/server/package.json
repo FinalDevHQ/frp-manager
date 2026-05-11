@@ -8,18 +8,20 @@
     "build": "tsc",
     "start": "node dist/index.js"
   },
+  "dependencies": {
+    "@frp-manager/config-core": "*",
+    "@frp-manager/shared": "*",
+    "cors": "^2.8.6",
+    "express": "^5.2.1",
+    "tsx": "^4.21.0"
+  },
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "dependencies": {
-    "cors": "^2.8.6",
-    "express": "^5.2.1"
-  },
   "devDependencies": {
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/node": "^25.6.2",
-    "tsx": "^4.21.0",
     "typescript": "^6.0.3"
   }
 }
