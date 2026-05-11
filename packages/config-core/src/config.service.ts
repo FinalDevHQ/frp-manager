@@ -1,26 +1,37 @@
 import { promises as fs } from "node:fs"
 import path from "node:path"
 import type { Proxy } from "@frp-manager/shared"
-import { parseFrpcYaml, stringifyFrpcYaml, type FrpcConfig } from "./parser"
+import { parseFrpcConfig, stringifyFrpcConfig, type FrpcConfig } from "./parser"
+import { detectFormat, type ConfigFormat } from "./format"
 import { assertValidProxies } from "./validator"
 import { backupFile } from "./backup"
 
 /**
- * 文件级 ConfigService：包装 parser + backup，管理 frpc.yml 的读/写。
+ * 文件级 ConfigService：包装 parser + backup，管理 frpc 配置文件的读/写。
  * 单例方式使用，由 server 传入 configPath。
+ * 文件格式按后缀自动判定（.toml → TOML，其它 → YAML），并在实例生命周期内固定。
  */
 export class ConfigService {
-  constructor(private readonly configPath: string) {}
+  private readonly format: ConfigFormat
+
+  constructor(private readonly configPath: string) {
+    this.format = detectFormat(configPath)
+  }
 
   getConfigPath(): string {
     return this.configPath
   }
 
-  /** 读取并解析当前 frpc.yml；文件不存在则返回空配置 */
+  /** 当前实例使用的序列化格式（yaml / toml） */
+  getFormat(): ConfigFormat {
+    return this.format
+  }
+
+  /** 读取并解析当前配置；文件不存在则返回空配置 */
   async read(): Promise<FrpcConfig> {
     try {
       const text = await fs.readFile(this.configPath, "utf8")
-      return parseFrpcYaml(text)
+      return parseFrpcConfig(text, this.format)
     } catch (err: unknown) {
       if ((err as NodeJS.ErrnoException).code === "ENOENT") {
         return { proxies: [], raw: {} }
@@ -29,7 +40,7 @@ export class ConfigService {
     }
   }
 
-  /** 读取原始 YAML 文本；文件不存在则返回空字符串 */
+  /** 读取原始文本；文件不存在则返回空字符串 */
   async readRaw(): Promise<string> {
     try {
       return await fs.readFile(this.configPath, "utf8")
@@ -41,12 +52,12 @@ export class ConfigService {
     }
   }
 
-  /** 基于一组 proxies 生成 YAML 文本（不写入） */
+  /** 基于一组 proxies 生成目标格式的文本（不写入） */
   async preview(proxies: Proxy[]): Promise<string> {
     assertValidProxies(proxies)
     const current = await this.read()
     const next: FrpcConfig = { ...current, proxies }
-    return stringifyFrpcYaml(next)
+    return stringifyFrpcConfig(next, this.format)
   }
 
   /**
@@ -63,9 +74,9 @@ export class ConfigService {
 
     const current = await this.read()
     const next: FrpcConfig = { ...current, proxies }
-    const yaml = stringifyFrpcYaml(next)
+    const text = stringifyFrpcConfig(next, this.format)
 
-    await fs.writeFile(this.configPath, yaml, "utf8")
+    await fs.writeFile(this.configPath, text, "utf8")
     return { savedAt: Date.now(), backupPath }
   }
 }

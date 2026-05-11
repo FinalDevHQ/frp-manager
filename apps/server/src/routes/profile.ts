@@ -1,7 +1,13 @@
 import { promises as fs } from "node:fs"
 import { Router, type Request, type Response, type NextFunction } from "express"
 import type { DeploymentProfile } from "@frp-manager/shared"
-import { discover, enableWebServer, parseWebServer, testProfile } from "@frp-manager/config-core"
+import {
+  detectFormat,
+  discover,
+  enableWebServer,
+  parseWebServer,
+  testProfile,
+} from "@frp-manager/config-core"
 import type { AppContext } from "../context"
 
 export function createProfileRouter(ctx: AppContext): Router {
@@ -67,7 +73,7 @@ export function createProfileRouter(ctx: AppContext): Router {
         }
         throw err
       }
-      const info = parseWebServer(text)
+      const info = parseWebServer(text, detectFormat(configPath))
       res.json({ success: true, data: info })
     } catch (err) {
       next(err)

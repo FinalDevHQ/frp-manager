@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@frp-manager/shared": "*",
+    "smol-toml": "^1.3.0",
     "yaml": "^2.6.0"
   },
   "devDependencies": {

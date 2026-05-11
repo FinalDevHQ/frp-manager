@@ -1,12 +1,14 @@
-import { parse, stringify } from "yaml"
+import { parse as parseYaml, stringify as stringifyYaml } from "yaml"
+import { parse as parseToml, stringify as stringifyToml } from "smol-toml"
 import type { Proxy, ProxyType } from "@frp-manager/shared"
+import type { ConfigFormat } from "./format"
 
 /**
- * frpc.yml 的顶层结构（v1 仅关心 proxies，其它字段透传保留）
+ * frpc 配置的顶层结构（v1 仅关心 proxies，其它字段透传保留）
  */
 export interface FrpcConfig {
   proxies: Proxy[]
-  /** 透传的其它字段（serverAddr / auth 等），保存时不会丢失 */
+  /** 透传的其它字段（serverAddr / auth / webServer 等），保存时不会丢失 */
   raw: Record<string, unknown>
 }
 
@@ -22,12 +24,50 @@ interface RawProxy {
 
 const SUPPORTED_TYPES: ProxyType[] = ["tcp", "http", "https"]
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 统一入口：按 format dispatch
+// ─────────────────────────────────────────────────────────────────────────────
+
 /**
- * 解析 frpc.yml 文本为结构化配置
- * 容错：proxies 缺失时返回空数组
+ * 解析 frpc 配置文本为结构化对象。
+ * 容错：proxies 缺失时返回空数组。空文本返回空配置。
  */
+export function parseFrpcConfig(text: string, format: ConfigFormat): FrpcConfig {
+  if (!text.trim()) return { proxies: [], raw: {} }
+  const parsed = format === "toml" ? parseToml(text) : parseYaml(text)
+  return normalizeConfig(parsed as Record<string, unknown> | null)
+}
+
+/**
+ * 将 FrpcConfig 序列化为目标格式的文本，保留 raw 中的其它字段。
+ */
+export function stringifyFrpcConfig(config: FrpcConfig, format: ConfigFormat): string {
+  const output = buildOutputObject(config)
+  if (format === "toml") {
+    return stringifyToml(output)
+  }
+  return stringifyYaml(output, { lineWidth: 0 })
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 向后兼容：保留旧的 YAML-only API（外部调用方可逐步迁移到 *Config 版本）
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** @deprecated 使用 `parseFrpcConfig(text, "yaml")` 替代 */
 export function parseFrpcYaml(yamlText: string): FrpcConfig {
-  const raw = (yamlText.trim() ? parse(yamlText) : {}) as Record<string, unknown> | null
+  return parseFrpcConfig(yamlText, "yaml")
+}
+
+/** @deprecated 使用 `stringifyFrpcConfig(config, "yaml")` 替代 */
+export function stringifyFrpcYaml(config: FrpcConfig): string {
+  return stringifyFrpcConfig(config, "yaml")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 内部 helper
+// ─────────────────────────────────────────────────────────────────────────────
+
+function normalizeConfig(raw: Record<string, unknown> | null): FrpcConfig {
   const safeRaw = raw && typeof raw === "object" ? raw : {}
 
   const rawProxies = Array.isArray(safeRaw.proxies) ? (safeRaw.proxies as RawProxy[]) : []
@@ -39,16 +79,11 @@ export function parseFrpcYaml(yamlText: string): FrpcConfig {
   return { proxies, raw: rest }
 }
 
-/**
- * 将 FrpcConfig 序列化为 YAML 文本
- * 保留 raw 中的其它字段
- */
-export function stringifyFrpcYaml(config: FrpcConfig): string {
-  const output = {
+function buildOutputObject(config: FrpcConfig): Record<string, unknown> {
+  return {
     ...config.raw,
     proxies: config.proxies.map((p) => serializeProxy(p)),
   }
-  return stringify(output, { lineWidth: 0 })
 }
 
 function normalizeProxy(p: RawProxy): Proxy {
