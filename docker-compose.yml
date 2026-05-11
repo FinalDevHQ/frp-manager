@@ -1,46 +1,61 @@
-# frp-manager 部署模板
+# ─────────────────────────────────────────────────────────────────────────────
+# frp-manager 部署模板（默认面向国内网络环境）
 #
-# 使用方法：
-#   1. 把宿主机的 frpc.yml 路径填到下面的 volumes
-#   2. （可选）调整 reload 策略所需的挂载，参考下方注释
-#   3. docker compose up -d
+# 用法 A：在 Debian 服务器上现地构建（推荐）
+#   docker compose up -d --build
 #
-# 然后访问 http://<host-ip>:3000 在 Setup 页面完成初始化
+# 用法 B：在别的机器构建好后离线导入 Debian
+#   # 构建机（建议直接在 Debian 同架构机器上构建；Windows/Mac 用 buildx 跨架构）
+#   docker compose build
+#   docker save frp-manager:latest | gzip > frp-manager.tar.gz
+#   # 拷到 Debian
+#   scp frp-manager.tar.gz user@debian:/opt/frp/
+#   # 在 Debian 上
+#   gunzip -c frp-manager.tar.gz | docker load
+#   docker compose up -d
+#
+# 镜像源覆盖（写 .env 即可，无需改本文件）：
+#   NODE_IMAGE=docker.1ms.run/library/node:20-alpine
+#   APK_MIRROR=https://mirrors.aliyun.com/alpine
+#   NPM_REGISTRY=https://registry.npmmirror.com
+# ─────────────────────────────────────────────────────────────────────────────
 
 services:
   frp-manager:
-    build:
-      context: .
-      # 国内构建：使用国内镜像源加速。如在海外构建，把 args 整段注释掉即可。
-      args:
-        NODE_IMAGE: docker.m.daocloud.io/library/node:20-alpine
-        APK_MIRROR: https://mirrors.tuna.tsinghua.edu.cn/alpine
-        NPM_REGISTRY: https://registry.npmmirror.com
     image: frp-manager:latest
     container_name: frp-manager
+    # 锁定 amd64：避免在 ARM 机器上误构建出 arm64 镜像然后传到 x86 Debian 跑不动。
+    # 如果你的 Debian 本身是 ARM（树莓派等），把下面这行改成 linux/arm64 或注释掉。
+    platform: linux/amd64
+    build:
+      context: .
+      dockerfile: Dockerfile
+      # 不传也行，Dockerfile 内置了同样的国内默认值；这里写出来便于 .env 覆盖。
+      args:
+        NODE_IMAGE:   ${NODE_IMAGE:-docker.m.daocloud.io/library/node:20-alpine}
+        APK_MIRROR:   ${APK_MIRROR:-https://mirrors.tuna.tsinghua.edu.cn/alpine}
+        NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmmirror.com}
+    # 永远用本地构建的镜像，避免 compose 跑去 docker hub 拉 frp-manager:latest
+    pull_policy: build
     restart: unless-stopped
     ports:
       - "3000:3000"
     environment:
-      # 容器内默认值已设置；如需覆盖在此添加：
-      # - PORT=3000
-      # - FRP_MANAGER_PROFILE_PATH=/app/runtime/profile.json
-      # 也可通过 FRPC_CONFIG_PATH / FRPC_RELOAD_TYPE 等启动时强制锁定 profile
       TZ: ${TZ:-Asia/Shanghai}
+      # 容器内默认值已设置，按需覆盖：
+      # PORT: 3000
+      # FRP_MANAGER_PROFILE_PATH: /app/runtime/profile.json
+      # 也可强制锁定 profile：FRPC_CONFIG_PATH / FRPC_RELOAD_TYPE / FRPC_ADMIN_BASE_URL 等
     volumes:
-      # 1) 持久化 profile.json
+      # 1) 持久化 profile.json（必须）
       - ./runtime:/app/runtime
 
       # 2) 把宿主机上的 frpc.yml 暴露给容器
-      #    在 Setup 页填的 configPath 必须是「容器内」路径
-      #    示例：宿主 /etc/frp/frpc.yml → 容器内 /etc/frp/frpc.yml
+      #    Setup 页填的 configPath 是「容器内」路径；和宿主同路径最直观
       - /etc/frp/frpc.yml:/etc/frp/frpc.yml
 
-      # 3) 如果用 docker / docker-compose 策略 reload 宿主上的 frpc：
-      #    a. 挂载 docker socket（容器内 docker CLI 即可操作宿主 docker）
+      # 3) reload 策略 = docker / docker-compose 时需要的挂载
       - /var/run/docker.sock:/var/run/docker.sock
-      #    b. 把宿主上的 docker-compose.yml 也挂进来（路径与宿主一致更直观）
       # - /opt/frp/docker-compose.yml:/opt/frp/docker-compose.yml
 
-      # 4) 如果用 systemctl 策略：建议改用 admin-api / docker / docker-compose；
-      #    在容器内调用宿主 systemd 复杂且不推荐。
+      # 4) systemctl 策略不推荐在容器内使用，改用 admin-api / docker / docker-compose
