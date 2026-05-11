@@ -50,9 +50,12 @@ services:
       # 1) 持久化 profile.json（必须）
       - ./runtime:/app/runtime
 
-      # 2) 把宿主机上的 frpc.yml 暴露给容器
-      #    Setup 页填的 configPath 是「容器内」路径；和宿主同路径最直观
-      - /etc/frp/frpc.yml:/etc/frp/frpc.yml
+      # 2) 把宿主机上 frpc 的「整个目录」挂进容器，宿主与容器路径保持一致。
+      #    Setup 页填的 configPath 直接写宿主真实路径即可（例如
+      #    /opt/dockerApp/frpc/frpc.toml）。挂目录而不是单文件的原因：
+      #      a. 保存时生成的备份 <name>.bak.<ts> 写在同目录，挂单文件会失败
+      #      b. 宿主端 mv / vim :w 会换 inode，挂单文件需要重启容器才能感知
+      - /opt/dockerApp/frpc:/opt/dockerApp/frpc
 
       # 3) reload 策略 = docker / docker-compose 时需要的挂载
       - /var/run/docker.sock:/var/run/docker.sock
