@@ -1,0 +1,40 @@
+# frp-manager 部署模板
+#
+# 使用方法：
+#   1. 把宿主机的 frpc.yml 路径填到下面的 volumes
+#   2. （可选）调整 reload 策略所需的挂载，参考下方注释
+#   3. docker compose up -d
+#
+# 然后访问 http://<host-ip>:3000 在 Setup 页面完成初始化
+
+services:
+  frp-manager:
+    build: .
+    image: frp-manager:latest
+    container_name: frp-manager
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      # 容器内默认值已设置；如需覆盖在此添加：
+      # - PORT=3000
+      # - FRP_MANAGER_PROFILE_PATH=/app/runtime/profile.json
+      # 也可通过 FRPC_CONFIG_PATH / FRPC_RELOAD_TYPE 等启动时强制锁定 profile
+      TZ: ${TZ:-Asia/Shanghai}
+    volumes:
+      # 1) 持久化 profile.json
+      - ./runtime:/app/runtime
+
+      # 2) 把宿主机上的 frpc.yml 暴露给容器
+      #    在 Setup 页填的 configPath 必须是「容器内」路径
+      #    示例：宿主 /etc/frp/frpc.yml → 容器内 /etc/frp/frpc.yml
+      - /etc/frp/frpc.yml:/etc/frp/frpc.yml
+
+      # 3) 如果用 docker / docker-compose 策略 reload 宿主上的 frpc：
+      #    a. 挂载 docker socket（容器内 docker CLI 即可操作宿主 docker）
+      - /var/run/docker.sock:/var/run/docker.sock
+      #    b. 把宿主上的 docker-compose.yml 也挂进来（路径与宿主一致更直观）
+      # - /opt/frp/docker-compose.yml:/opt/frp/docker-compose.yml
+
+      # 4) 如果用 systemctl 策略：建议改用 admin-api / docker / docker-compose；
+      #    在容器内调用宿主 systemd 复杂且不推荐。

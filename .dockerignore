@@ -1,0 +1,42 @@
+# 节点产物
+**/node_modules
+**/dist
+**/build
+**/.next
+**/.turbo
+**/.cache
+**/.parcel-cache
+**/.vite
+**/*.tsbuildinfo
+
+# 运行时
+runtime/profile.json
+runtime/*.local.*
+**/*.bak
+**/*.bak.*
+
+# IDE / OS / Git
+.git
+.gitignore
+.vscode
+.idea
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 配置示例（容器里通过 volume 挂载，不要烧进镜像）
+config/
+
+# 文档与计划，不影响构建
+prd/
+.windsurf/
+*.md
+!README.md
+
+# 日志
+*.log
+logs/
+
+# 截图
+**/PixPin_*.png
+**/Screenshot*.png
