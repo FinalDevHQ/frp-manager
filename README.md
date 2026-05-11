@@ -63,15 +63,31 @@ docker compose up -d --build
 ```
 `runtime/profile.json` 由 volume 持久化，升级不会丢配置。
 
-### 构建时拉镜像超时（国内 / IPv6 不通）
-症状大致如下：
-```
-failed to fetch oauth token: Post "https://auth.docker.io/token": dial tcp [2a03:...]:443: i/o timeout
-```
-解决办法二选一：
+### 国内服务器构建加速
+构建会拉三类资源，国内访问任一都可能超时：
 
-**1）配置 registry mirror**（推荐）
-编辑 `/etc/docker/daemon.json`：
+| 资源 | 默认源 | 国内替代 |
+| --- | --- | --- |
+| 基础镜像 `node:20-alpine` | `docker.io` | `docker.m.daocloud.io/library/node:20-alpine` |
+| apk 系统包 | `dl-cdn.alpinelinux.org` | `https://mirrors.tuna.tsinghua.edu.cn/alpine` |
+| npm 包 | `registry.npmjs.org` | `https://registry.npmmirror.com` |
+
+Dockerfile 已支持 `--build-arg` 一键切换。**任选一种**：
+
+**方式 A：改 `docker-compose.yml`**（推荐，一次配好）
+取消 `build.args` 块的注释即可，然后照常 `docker compose up -d --build`。
+
+**方式 B：命令行 build-arg**
+```bash
+docker compose build \
+  --build-arg NODE_IMAGE=docker.m.daocloud.io/library/node:20-alpine \
+  --build-arg APK_MIRROR=https://mirrors.tuna.tsinghua.edu.cn/alpine \
+  --build-arg NPM_REGISTRY=https://registry.npmmirror.com
+docker compose up -d
+```
+
+**方式 C：daemon 全局 registry-mirror**（影响所有项目）
+`/etc/docker/daemon.json`：
 ```json
 {
   "registry-mirrors": [
@@ -80,7 +96,6 @@ failed to fetch oauth token: Post "https://auth.docker.io/token": dial tcp [2a03
   ]
 }
 ```
-然后 `systemctl restart docker`，再次 `docker compose up -d --build`。
+`systemctl restart docker`，然后 `docker compose up -d --build`。
 
-**2）禁用 docker daemon 的 IPv6 出站**
-某些 VPS 的 IPv6 路由到 `*.docker.io` 不通但 IPv4 正常。在 `/etc/docker/daemon.json` 里加 `"ipv6": false` 后重启 docker。
+> 个别 VPS 的 IPv6 路由到 `*.docker.io` 不通但 IPv4 正常，可在 `/etc/docker/daemon.json` 里加 `"ipv6": false` 后重启 docker。
