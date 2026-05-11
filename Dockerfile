@@ -30,8 +30,12 @@ COPY apps/web/package.json apps/web/package.json
 COPY packages/shared/package.json packages/shared/package.json
 COPY packages/config-core/package.json packages/config-core/package.json
 
-# 用 npm ci，包含 devDependencies（vite/tsc 需要）
-RUN npm ci --include=dev
+# 安装依赖，包含 devDependencies（vite/tsc 需要）
+# 注意：这里故意用 npm install 而非 npm ci，原因是规避 npm 的跨平台 optional
+# 依赖 bug（npm/cli#4828）。若 lockfile 是在 Windows/macOS 上生成的，里面不会
+# 包含 linux-musl 的原生 binding（如 @rolldown/binding-linux-x64-musl），
+# 走 npm ci 会导致 vite/rolldown 在容器内 build 失败。
+RUN npm install --include=dev --no-audit --no-fund
 
 # ───────────────────────────────────────────────────────────────
 # Stage 2: 构建 web 静态产物
@@ -69,7 +73,7 @@ COPY apps/server/package.json apps/server/package.json
 COPY apps/web/package.json apps/web/package.json
 COPY packages/shared/package.json packages/shared/package.json
 COPY packages/config-core/package.json packages/config-core/package.json
-RUN npm ci --omit=dev && npm cache clean --force
+RUN npm install --omit=dev --no-audit --no-fund && npm cache clean --force
 
 # 复制源码 + 构建产物
 COPY apps/server apps/server
