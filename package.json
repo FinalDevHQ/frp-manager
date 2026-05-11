@@ -1,10 +1,16 @@
 {
   "name": "frp-manager",
   "version": "1.0.0",
-  "description": "管理FRPC",
-  "main": "index.js",
+  "description": "可视化管理 frpc.yml",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev:web": "npm run dev -w web",
+    "dev:server": "npm run dev -w frp-manager-server",
+    "build": "npm run build --workspaces --if-present"
   },
   "keywords": [],
   "author": "",
