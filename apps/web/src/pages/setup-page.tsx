@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useNavigate } from "react-router-dom"
 import {
+  AlertTriangle,
   ArrowRight,
   Boxes,
   CheckCircle2,
@@ -33,6 +34,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { StrategyCard } from "@/features/setup/strategy-card"
 import { AdminEnabler } from "@/features/setup/admin-enabler"
 import { DiscoveryPanel } from "@/features/setup/discovery-panel"
@@ -100,34 +109,58 @@ function defaultStrategy(type: ReloadStrategyType): ReloadStrategy {
   }
 }
 
+/**
+ * 外层只负责异步加载 profile；加载完成后通过 `key` 把一份稳定的初始值交给内层 SetupForm。
+ * 这样 SetupForm 的 useState 用 props 做初始化，完全避免 useEffect + setState 同步外部状态的反模式。
+ */
 export function SetupPage() {
-  const qc = useQueryClient()
-  const navigate = useNavigate()
-
-  const { data: existing } = useQuery({
+  const { data: existing, isLoading } = useQuery({
     queryKey: ["profile"],
     queryFn: profileApi.get,
   })
 
-  const [configPath, setConfigPath] = useState("/etc/frp/frpc.yml")
-  const [strategy, setStrategy] = useState<ReloadStrategy>({ type: "admin-api", baseUrl: "http://127.0.0.1:7400" })
+  if (isLoading) {
+    return (
+      <div className="flex items-center gap-2 text-sm text-muted-foreground p-8">
+        <Loader2 className="h-4 w-4 animate-spin" />
+        加载中…
+      </div>
+    )
+  }
+
+  // existing 可能是 null（未配置）；用 updatedAt 作为 key，让用户编辑完又保存后能拿到最新初始值
+  return (
+    <SetupForm
+      key={existing?.updatedAt ?? "new"}
+      initialConfigPath={existing?.configPath ?? "/etc/frp/frpc.yml"}
+      initialStrategy={
+        existing?.reload ?? { type: "admin-api", baseUrl: "http://127.0.0.1:7400" }
+      }
+    />
+  )
+}
+
+function SetupForm({
+  initialConfigPath,
+  initialStrategy,
+}: {
+  initialConfigPath: string
+  initialStrategy: ReloadStrategy
+}) {
+  const qc = useQueryClient()
+  const navigate = useNavigate()
+
+  const [configPath, setConfigPath] = useState(initialConfigPath)
+  const [strategy, setStrategy] = useState<ReloadStrategy>(initialStrategy)
   const [testResult, setTestResult] = useState<ProfileTestResult | null>(null)
 
-  useEffect(() => {
-    if (existing) {
-      setConfigPath(existing.configPath)
-      setStrategy(existing.reload)
-    }
-  }, [existing])
-
-  const profile: DeploymentProfile = {
-    configPath,
-    reload: strategy,
-    updatedAt: Date.now(),
+  // updatedAt 只在真正提交时生成，避免在 render 中调用 Date.now（impure）
+  function buildProfile(): DeploymentProfile {
+    return { configPath, reload: strategy, updatedAt: Date.now() }
   }
 
   const testMutation = useMutation({
-    mutationFn: () => profileApi.test(profile),
+    mutationFn: () => profileApi.test(buildProfile()),
     onSuccess: (r) => setTestResult(r),
     onError: (e: Error) => {
       setTestResult(null)
@@ -135,16 +168,42 @@ export function SetupPage() {
     },
   })
 
+  const [commandConfirmOpen, setCommandConfirmOpen] = useState(false)
+
   const saveMutation = useMutation({
-    mutationFn: () => profileApi.save(profile),
+    mutationFn: (opts?: { confirmCommand?: boolean }) =>
+      profileApi.save(buildProfile(), opts),
     onSuccess: () => {
       toast.success("配置已保存")
+      setCommandConfirmOpen(false)
       qc.invalidateQueries({ queryKey: ["profile"] })
       qc.invalidateQueries({ queryKey: ["proxies"] })
       navigate("/proxies")
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => {
+      // 服务端策略错误：默认密码下禁用 command
+      if (e.message === "DEFAULT_PASSWORD_BLOCKS_COMMAND") {
+        toast.error(
+          "默认密码 admin 下禁止启用 command 策略，请先在右上角横条修改密码",
+        )
+        setCommandConfirmOpen(false)
+        return
+      }
+      if (e.message === "CONFIRM_COMMAND_REQUIRED") {
+        toast.error("command 策略必须二次确认才能保存")
+        return
+      }
+      toast.error(e.message)
+    },
   })
+
+  function handleSave() {
+    if (strategy.type === "command") {
+      setCommandConfirmOpen(true)
+      return
+    }
+    saveMutation.mutate(undefined)
+  }
 
   const canSave = !!testResult && testResult.configPathOk && testResult.reloadOk
 
@@ -263,7 +322,7 @@ export function SetupPage() {
 
       <div className="flex justify-end gap-2">
         <Button
-          onClick={() => saveMutation.mutate()}
+          onClick={handleSave}
           disabled={!canSave || saveMutation.isPending}
         >
           {saveMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
@@ -271,7 +330,146 @@ export function SetupPage() {
           <ArrowRight className="h-4 w-4 ml-1" />
         </Button>
       </div>
+
+      <CommandConfirmDialog
+        open={commandConfirmOpen}
+        onOpenChange={setCommandConfirmOpen}
+        command={strategy.type === "command" ? strategy.command : ""}
+        loading={saveMutation.isPending}
+        onConfirm={() => saveMutation.mutate({ confirmCommand: true })}
+      />
     </div>
+  )
+}
+
+/**
+ * 二次确认弹框：要求用户重新键入完整命令才放行保存。
+ * 防止 XSS / 误操作把 reload 策略改成任意 shell 命令。
+ */
+function CommandConfirmDialog({
+  open,
+  onOpenChange,
+  command,
+  loading,
+  onConfirm,
+}: {
+  open: boolean
+  onOpenChange: (v: boolean) => void
+  command: string
+  loading: boolean
+  onConfirm: () => void
+}) {
+  const [typed, setTyped] = useState("")
+  const matches = typed === command && command.length > 0
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(v: boolean) => {
+        // 关闭时重置输入，放在事件回调里而不是 useEffect 里，避免 cascading render
+        if (!v) setTyped("")
+        onOpenChange(v)
+      }}
+    >
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <AlertTriangle className="h-5 w-5 text-amber-500" />
+            确认启用 command 策略
+          </DialogTitle>
+          <DialogDescription>
+            command 策略本质是执行任意 shell 命令，风险很高。请确认无误后再保存。
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div>
+            <Label className="text-xs">将要保存的命令</Label>
+            <pre className="mt-1 rounded-lg bg-muted/60 px-3 py-2 text-xs font-mono whitespace-pre-wrap break-all">
+              {command || "（空）"}
+            </pre>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="cmd-confirm" className="text-xs">
+              请在下方再次输入上面这条命令以确认：
+            </Label>
+            <Input
+              id="cmd-confirm"
+              value={typed}
+              onChange={(e) => setTyped(e.target.value)}
+              placeholder="逐字键入"
+              className="font-mono"
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            取消
+          </Button>
+          <Button onClick={onConfirm} disabled={!matches || loading}>
+            {loading && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+            确认保存
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/**
+ * admin-api 密码输入框：
+ *  - 当后端返回 password === "***"（已加密保存），UI 显示空 + 占位符提示「已设置」
+ *  - 用户不输入 → 提交时仍带 password: "***"，服务端识别为「保持原值」
+ *  - 用户输入新值 → 覆盖
+ */
+function AdminPasswordInput({
+  strategy,
+  onChange,
+}: {
+  strategy: ReloadStrategy & { type: "admin-api" }
+  onChange: (s: ReloadStrategy) => void
+}) {
+  const isMasked = strategy.password === "***"
+  const [editing, setEditing] = useState(!isMasked)
+
+  if (isMasked && !editing) {
+    return (
+      <div className="flex items-center gap-2">
+        <Input
+          type="password"
+          value=""
+          placeholder="（已设置，留空保持原值）"
+          readOnly
+          onFocus={() => setEditing(true)}
+        />
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            setEditing(true)
+            onChange({ ...strategy, password: "" })
+          }}
+        >
+          修改
+        </Button>
+      </div>
+    )
+  }
+
+  return (
+    <Input
+      type="password"
+      value={strategy.password ?? ""}
+      placeholder={isMasked ? "（留空保持原值）" : ""}
+      autoFocus={editing && isMasked}
+      onChange={(e) =>
+        onChange({
+          ...strategy,
+          // 留空时回填 *** 让服务端保持原值；用户主动清空可点「修改」按钮重新进入
+          password: e.target.value || (isMasked ? "***" : undefined),
+        })
+      }
+    />
   )
 }
 
@@ -319,11 +517,7 @@ function StrategyFields({
             />
           </FormField>
           <FormField label="密码（可选）" className="sm:col-span-2">
-            <Input
-              type="password"
-              value={strategy.password ?? ""}
-              onChange={(e) => onChange({ ...strategy, password: e.target.value || undefined })}
-            />
+            <AdminPasswordInput strategy={strategy} onChange={onChange} />
           </FormField>
         </div>
       )

@@ -36,7 +36,8 @@ async function unwrap<T>(promise: Promise<{ data: ApiResponse<T> }>): Promise<T>
       if (err.response?.status === 412 && message === "PROFILE_NOT_CONFIGURED") {
         throw new ProfileNotConfiguredError()
       }
-      throw new Error(message ?? err.message)
+      // 保留底层 AxiosError 为 cause，便于调用方拿到 status/headers 做更细处理
+      throw new Error(message ?? err.message, { cause: err })
     }
     throw err
   }
@@ -85,8 +86,10 @@ export interface WebServerInfo {
 
 export const profileApi = {
   get: () => unwrapNullable<DeploymentProfile>(api.get("/profile")),
-  save: (profile: DeploymentProfile) =>
-    unwrap<DeploymentProfile>(api.put("/profile", profile)),
+  save: (profile: DeploymentProfile, options?: { confirmCommand?: boolean }) =>
+    unwrap<DeploymentProfile>(
+      api.put("/profile", { ...profile, confirmCommand: options?.confirmCommand }),
+    ),
   test: (profile: DeploymentProfile) =>
     unwrap<ProfileTestResult>(api.post("/profile/test", profile)),
   inspectAdmin: (configPath: string) =>

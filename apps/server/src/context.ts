@@ -1,6 +1,7 @@
 import path from "node:path"
 import type { DeploymentProfile, ReloadResult } from "@frp-manager/shared"
 import { ConfigService, ProfileService } from "@frp-manager/config-core"
+import type { AuthService } from "./auth"
 
 /**
  * 应用级上下文。ConfigService 根据当前 profile 按需创建。
@@ -8,6 +9,7 @@ import { ConfigService, ProfileService } from "@frp-manager/config-core"
  */
 export interface AppContext {
   profileService: ProfileService
+  authService: AuthService
   /** 根据 profile.configPath 获取 ConfigService；未配置时抛错 */
   requireConfigService: () => Promise<ConfigService>
   /** 获取当前 profile 快照 */
@@ -16,7 +18,7 @@ export interface AppContext {
   lastReload?: ReloadResult & { at: number }
 }
 
-export function createContext(): AppContext {
+export function createContext(authService: AuthService): AppContext {
   const profilePath = process.env.FRP_MANAGER_PROFILE_PATH
     ? path.resolve(process.env.FRP_MANAGER_PROFILE_PATH)
     : path.resolve(process.cwd(), "../../runtime/profile.json")
@@ -27,6 +29,7 @@ export function createContext(): AppContext {
 
   const ctx: AppContext = {
     profileService,
+    authService,
     async getProfile() {
       return profileService.read()
     },

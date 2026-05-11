@@ -46,9 +46,24 @@ services:
       # PORT: 3000
       # FRP_MANAGER_PROFILE_PATH: /app/runtime/profile.json
       # 也可强制锁定 profile：FRPC_CONFIG_PATH / FRPC_RELOAD_TYPE / FRPC_ADMIN_BASE_URL 等
+      #
+      # ─── 安全相关（强烈建议生产环境设置） ──────────────────────────────
+      # 1) 路径白名单：Setup 页填的 configPath 必须在这些根目录下，否则 403。
+      #    Windows 使用分号 ; 分隔，Linux 上也统一用 ; 以避免与路径里的冒号冲突。
+      # FRP_MANAGER_ALLOWED_CONFIG_ROOTS: "/opt/dockerApp/frpc"
+      #
+      # 2) CORS 白名单：默认禁止任何跨域；仅当你把 web UI 部署在别的域名时才需要设置。
+      # FRP_MANAGER_CORS_ORIGINS: "https://frp.example.com"
+      #
+      # 3) auth.json 路径（默认 /app/config/auth.json）：
+      # FRP_MANAGER_AUTH_PATH: /app/config/auth.json
     volumes:
       # 1) 持久化 profile.json（必须）
       - ./runtime:/app/runtime
+
+      # 1.1) 持久化 auth.json（登录密码）。首次启动会自动生成默认密码 "admin"，
+      #      请尽快编辑 ./config/auth.json 修改 password 字段。
+      - ./config:/app/config
 
       # 2) 把宿主机上 frpc 的「整个目录」挂进容器，宿主与容器路径保持一致。
       #    Setup 页填的 configPath 直接写宿主真实路径即可（例如

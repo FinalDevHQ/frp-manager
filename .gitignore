@@ -70,6 +70,9 @@ temp/
 runtime/*
 !runtime/.gitkeep
 
+# 登录密码（机器生成 / 用户编辑），不入库
+config/auth.json
+
 # frpc.yml backups
 *.bak
 *.bak.*

@@ -95,6 +95,7 @@ ARG NPM_REGISTRY=https://registry.npmmirror.com
 ENV NODE_ENV=production \
     PORT=3000 \
     FRP_MANAGER_PROFILE_PATH=/app/runtime/profile.json \
+    FRP_MANAGER_AUTH_PATH=/app/config/auth.json \
     WEB_DIST_DIR=/app/apps/web/dist
 
 # alpine 换源 + 装系统包（tini 进程托管 / docker CLI / curl 健康检查）
@@ -129,9 +130,9 @@ COPY apps/server apps/server
 COPY packages   packages
 COPY --from=build-web /app/apps/web/dist /app/apps/web/dist
 
-# 运行时挂载点（profile.json 会持久化到这里）
-RUN mkdir -p /app/runtime
-VOLUME ["/app/runtime"]
+# 运行时挂载点（profile.json / auth.json 会持久化到这里）
+RUN mkdir -p /app/runtime /app/config
+VOLUME ["/app/runtime", "/app/config"]
 
 EXPOSE 3000
 
