@@ -54,19 +54,23 @@ RUN set -eux; \
     npm config set fetch-timeout 600000; \
     npm config get registry
 
-# 先只复制 manifest，最大化利用 Docker layer 缓存
-COPY package.json package-lock.json ./
+# 先只复制 manifest，最大化利用 Docker layer 缓存。
+# 故意不拷贝 package-lock.json（npm/cli#4828）：
+#   跨平台 optional 原生依赖（如 @rolldown/binding-linux-x64-musl）。
+#   Windows/macOS 上生成的 lockfile 不包含 linux-musl binding，即便用
+#   `npm install` 也会复用 lockfile 的解析跳过补装，导致 vite/rolldown
+#   在容器里加载 binding 时报 MODULE_NOT_FOUND。
+#   解决：构建容器里不带 lockfile，让 npm 做一次平台原生解析。
+COPY package.json ./
 COPY apps/server/package.json apps/server/package.json
 COPY apps/web/package.json    apps/web/package.json
 COPY packages/shared/package.json      packages/shared/package.json
 COPY packages/config-core/package.json packages/config-core/package.json
 
 # 安装依赖（含 dev，因为下一阶段要跑 vite/tsc）。
-# 故意使用 npm install 而非 npm ci：lockfile 在 Windows/macOS 生成时不会包含
-# linux-musl 的原生 binding（如 @rolldown/binding-linux-x64-musl），npm ci 会硬失败。
 # BuildKit cache mount 让重复构建走本地 npm 缓存，国内拉包速度提升明显。
 RUN --mount=type=cache,target=/root/.npm,sharing=locked \
-    npm install --include=dev --no-audit --no-fund
+    npm install --include=dev --include=optional --no-audit --no-fund
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Stage 2: build-web — 编译前端静态产物
@@ -109,8 +113,9 @@ RUN set -eux; \
     npm config set fetch-retry-maxtimeout 180000; \
     npm config set fetch-timeout 600000
 
-# 仅安装运行时依赖（tsx 在 server 的 dependencies 里）
-COPY package.json package-lock.json ./
+# 仅安装运行时依赖（tsx 在 server 的 dependencies 里）。
+# 同 deps 阶段：不带 lockfile 进容器，规避 npm/cli#4828。
+COPY package.json ./
 COPY apps/server/package.json apps/server/package.json
 COPY apps/web/package.json    apps/web/package.json
 COPY packages/shared/package.json      packages/shared/package.json
