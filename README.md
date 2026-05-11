@@ -62,3 +62,25 @@ git pull
 docker compose up -d --build
 ```
 `runtime/profile.json` 由 volume 持久化，升级不会丢配置。
+
+### 构建时拉镜像超时（国内 / IPv6 不通）
+症状大致如下：
+```
+failed to fetch oauth token: Post "https://auth.docker.io/token": dial tcp [2a03:...]:443: i/o timeout
+```
+解决办法二选一：
+
+**1）配置 registry mirror**（推荐）
+编辑 `/etc/docker/daemon.json`：
+```json
+{
+  "registry-mirrors": [
+    "https://docker.m.daocloud.io",
+    "https://dockerproxy.com"
+  ]
+}
+```
+然后 `systemctl restart docker`，再次 `docker compose up -d --build`。
+
+**2）禁用 docker daemon 的 IPv6 出站**
+某些 VPS 的 IPv6 路由到 `*.docker.io` 不通但 IPv4 正常。在 `/etc/docker/daemon.json` 里加 `"ipv6": false` 后重启 docker。
