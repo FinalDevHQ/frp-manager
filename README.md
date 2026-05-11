@@ -1,13 +1,136 @@
 # frp-manager
 
-可视化管理 frpc.yml 的轻量 Web 工具。
+可视化管理 frpc 配置的轻量 Web 工具。
 
 ## 功能
-- proxy 增删改查、YAML 预览与 diff
-- 部署 Profile：配置 frpc.yml 路径 + reload 策略
+- proxy 增删改查、配置预览与 diff
+- **YAML / TOML 双格式**（按文件后缀自动识别）
+- 部署 Profile：配置文件路径 + reload 策略
 - Reload 策略：`admin-api` / `systemctl` / `docker` / `docker-compose` / `command` / `none`
-- 自动发现：扫描常见 frpc.yml 路径、systemd 服务、docker 容器、docker-compose 文件
+- 自动发现：扫描常见 frpc 路径、systemd 服务、docker 容器、docker-compose 文件
 - frpc webServer 一键启用
+
+---
+
+## 部署方式
+
+### 方式 A：从 Docker Hub 拉镜像（推荐）
+
+主分支每次合入自动构建，镜像名：[`myfinal12/frp-manager`](https://hub.docker.com/r/myfinal12/frp-manager)
+
+可用 tag：
+
+| Tag | 含义 |
+| --- | --- |
+| `latest` | main 最新 |
+| `sha-xxxxxxx` | 精确 commit，**生产环境推荐** |
+| `1.2.3` / `1.2` / `1` | 语义化版本（push 了 `vX.Y.Z` tag 才会有） |
+
+#### 步骤
+
+```bash
+# 1. 在服务器上准备目录
+mkdir -p /opt/frp-manager && cd /opt/frp-manager
+
+# 2. 拷一份 docker-compose.prod.yml 过来
+#    可以直接 wget raw 链接，也可以手动复制
+wget https://raw.githubusercontent.com/<your-gh-user>/frp-manager/main/docker-compose.prod.yml
+
+# 3. 写 .env，至少设置镜像和 frpc 配置目录
+cat > .env <<EOF
+IMAGE=myfinal12/frp-manager
+TAG=latest
+TZ=Asia/Shanghai
+EOF
+
+# 4. 拉镜像 + 起容器
+docker compose -f docker-compose.prod.yml pull
+docker compose -f docker-compose.prod.yml up -d
+
+# 5. 升级（之后只要这两行）
+docker compose -f docker-compose.prod.yml pull
+docker compose -f docker-compose.prod.yml up -d
+```
+
+访问 `http://<host>:3000`，首屏会跳到 **Setup** 页：
+1. 填写 frpc 配置路径（**宿主真实路径**，例如 `/opt/dockerApp/frpc/frpc.toml`，与挂载到容器内路径一致）
+2. 选 reload 策略（容器场景推荐 `admin-api` 或 `docker-compose`）
+3. 测试 → 保存
+
+#### 国内拉 Docker Hub 慢/不通
+
+`/etc/docker/daemon.json`：
+```json
+{
+  "registry-mirrors": [
+    "https://docker.m.daocloud.io",
+    "https://docker.1ms.run"
+  ],
+  "ipv6": false
+}
+```
+`sudo systemctl restart docker`，再 `docker pull myfinal12/frp-manager:latest`。
+
+---
+
+### 方式 B：源码构建（开发 / 自定义）
+
+仓库根目录的 `Dockerfile` 和 `docker-compose.yml` 走多阶段构建：内置 Node 运行时 + 静态前端 + `docker` CLI（含 compose 插件）。
+
+```bash
+git clone https://github.com/<your-gh-user>/frp-manager.git
+cd frp-manager
+docker compose up -d --build
+```
+
+升级：
+```bash
+git pull
+docker compose up -d --build
+```
+
+> `runtime/profile.json` 由 volume 持久化，升级不丢配置。
+
+---
+
+## 关键挂载
+
+无论方式 A 还是 B，挂载语义一致：
+
+| 宿主路径 | 容器路径 | 用途 |
+| --- | --- | --- |
+| `./runtime` | `/app/runtime` | 持久化 `profile.json`，必须 |
+| `/opt/dockerApp/frpc` | `/opt/dockerApp/frpc` | frpc 配置目录，**路径保持一致**便于 Setup 页直接填宿主路径。挂目录而非单文件——备份 `<name>.bak.<ts>` 要写在同目录 |
+| `/var/run/docker.sock` | `/var/run/docker.sock` | 让容器内 `docker` / `docker compose` 操作宿主 frpc 容器（仅 reload 策略 = `docker` / `docker-compose` 时需要） |
+
+> 用别的目录就改 `docker-compose.prod.yml` 里的 volumes 那行。
+
+---
+
+## Reload 策略与容器的搭配
+- **admin-api**：最干净。frpc 启用 `webServer` 后，容器通过网络调用，无须挂 socket。`baseUrl` 用宿主 IP（或 `host.docker.internal`，加 `extra_hosts: ["host.docker.internal:host-gateway"]`）。
+- **docker / docker-compose**：必须挂 `/var/run/docker.sock`；`docker-compose` 策略还要把宿主的 `docker-compose.yml` 挂到容器内**相同路径**。
+- **systemctl**：不推荐在容器内使用。
+- **command**：执行的是**容器内**的 shell 命令，慎用。
+
+---
+
+## 环境变量启动锁定（可选）
+跳过 Setup 页直接锁死配置：
+```yaml
+environment:
+  FRPC_CONFIG_PATH: /opt/dockerApp/frpc/frpc.toml
+  FRPC_RELOAD_TYPE: admin-api
+  FRPC_ADMIN_BASE_URL: http://host.docker.internal:7400
+```
+完整变量列表见 `packages/config-core/src/profile.service.ts`。
+
+---
+
+## 健康检查
+镜像内置 `HEALTHCHECK`，调用 `/api/health`。`docker ps` 会显示 `(healthy)`。
+
+---
 
 ## 本地开发
 ```bash
@@ -16,86 +139,38 @@ npm run dev:server   # http://localhost:3000
 npm run dev:web      # http://localhost:5500（vite 已代理 /api → 3000）
 ```
 
-## Docker 部署（推荐生产用法）
+---
 
-仓库根目录已带 `Dockerfile` 和 `docker-compose.yml`，多阶段构建产出单镜像：内置 Node 运行时 + 静态前端 + `docker` CLI（含 compose 插件）。
+## 国内服务器源码构建加速（仅方式 B 相关）
 
-### 一键启动
-```bash
-# 在服务器上 clone/拉取仓库后
-docker compose up -d --build
-```
-访问 `http://<host>:3000`，首屏会跳到 **Setup** 页：
-1. 填写 frpc.yml 路径（**容器内**路径，例如 `/etc/frp/frpc.yml`）
-2. 选 reload 策略（容器场景推荐 `admin-api` 或 `docker-compose`）
-3. 测试 → 保存
+构建会拉三类资源，国内访问任一都可能超时。Dockerfile / docker-compose.yml 已**默认启用国内镜像**：
 
-### `docker-compose.yml` 关键 volumes
-| 宿主路径 | 容器路径 | 用途 |
+| 资源 | 默认源（国内） | 备选 |
 | --- | --- | --- |
-| `./runtime` | `/app/runtime` | 持久化 `profile.json`，必须 |
-| `/etc/frp/frpc.yml` | `/etc/frp/frpc.yml` | 让容器能读写宿主 frpc.yml，**路径要保持一致** |
-| `/var/run/docker.sock` | `/var/run/docker.sock` | 让容器内 `docker` / `docker compose` 操作宿主上的 frpc 容器 |
+| 基础镜像 `node:20-alpine` | `docker.m.daocloud.io/library/node:20-alpine` | `docker.1ms.run/library/node:20-alpine` |
+| apk 系统包 | `mirrors.tuna.tsinghua.edu.cn/alpine` | `mirrors.aliyun.com/alpine` / `mirrors.ustc.edu.cn/alpine` |
+| npm 包 | `registry.npmmirror.com` | （已是 npm 官方镜像最快源） |
 
-### Reload 策略与容器的搭配
-- **admin-api**：最干净。frpc 启用 `webServer` 后，容器通过网络调用，无须挂 socket。`baseUrl` 用宿主 IP（或 `host.docker.internal`，加 `extra_hosts: ["host.docker.internal:host-gateway"]`）。
-- **docker / docker-compose**：必须挂 `/var/run/docker.sock`；`docker-compose` 策略还要把宿主的 `docker-compose.yml` 挂到容器内**相同路径**。
-- **systemctl**：不推荐在容器内使用。
-- **command**：执行的是**容器内**的 shell 命令，慎用。
-
-### 环境变量启动锁定（可选）
-若想跳过 Setup 页直接锁死配置：
-```yaml
-environment:
-  FRPC_CONFIG_PATH: /etc/frp/frpc.yml
-  FRPC_RELOAD_TYPE: admin-api
-  FRPC_ADMIN_BASE_URL: http://host.docker.internal:7400
+通过 `.env` 覆盖：
 ```
-完整变量列表见 `packages/config-core/src/profile.service.ts`。
-
-### 健康检查
-镜像内置 `HEALTHCHECK`，调用 `/api/health`。`docker ps` 会显示 `(healthy)`。
-
-### 升级
-```bash
-git pull
-docker compose up -d --build
-```
-`runtime/profile.json` 由 volume 持久化，升级不会丢配置。
-
-### 国内服务器构建加速
-构建会拉三类资源，国内访问任一都可能超时：
-
-| 资源 | 默认源 | 国内替代 |
-| --- | --- | --- |
-| 基础镜像 `node:20-alpine` | `docker.io` | `docker.m.daocloud.io/library/node:20-alpine` |
-| apk 系统包 | `dl-cdn.alpinelinux.org` | `https://mirrors.tuna.tsinghua.edu.cn/alpine` |
-| npm 包 | `registry.npmjs.org` | `https://registry.npmmirror.com` |
-
-Dockerfile 已支持 `--build-arg` 一键切换。**任选一种**：
-
-**方式 A：改 `docker-compose.yml`**（推荐，一次配好）
-取消 `build.args` 块的注释即可，然后照常 `docker compose up -d --build`。
-
-**方式 B：命令行 build-arg**
-```bash
-docker compose build \
-  --build-arg NODE_IMAGE=docker.m.daocloud.io/library/node:20-alpine \
-  --build-arg APK_MIRROR=https://mirrors.tuna.tsinghua.edu.cn/alpine \
-  --build-arg NPM_REGISTRY=https://registry.npmmirror.com
-docker compose up -d
+NODE_IMAGE=docker.1ms.run/library/node:20-alpine
+APK_MIRROR=https://mirrors.aliyun.com/alpine
+NPM_REGISTRY=https://registry.npmmirror.com
 ```
 
-**方式 C：daemon 全局 registry-mirror**（影响所有项目）
-`/etc/docker/daemon.json`：
-```json
-{
-  "registry-mirrors": [
-    "https://docker.m.daocloud.io",
-    "https://dockerproxy.com"
-  ]
-}
-```
-`systemctl restart docker`，然后 `docker compose up -d --build`。
+> IPv6 路由到 `*.docker.io` 不通但 IPv4 正常时，在 `/etc/docker/daemon.json` 里加 `"ipv6": false` 后重启 docker。
 
-> 个别 VPS 的 IPv6 路由到 `*.docker.io` 不通但 IPv4 正常，可在 `/etc/docker/daemon.json` 里加 `"ipv6": false` 后重启 docker。
+---
+
+## CI/CD
+
+`.github/workflows/docker-publish.yml` 自动构建镜像并推 Docker Hub。
+
+| 触发 | 行为 |
+| --- | --- |
+| push 到 `main` | build + push（`latest` + `sha-xxxxxxx`） |
+| push tag `v1.2.3` | build + push（`1.2.3` / `1.2` / `1` / `latest`） |
+| 其它分支 / PR | **不触发** |
+| 手动 Run workflow | 可指定额外 tag |
+
+详细配置和 Secrets 设置见 `.github/workflows/README.md`。
