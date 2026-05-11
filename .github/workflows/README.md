@@ -28,9 +28,10 @@
 
 | 场景 | 行为 |
 | --- | --- |
-| push 到 `main` / `master` | build + push，打 `latest` 和 `sha-xxxxxxx` 两个 tag |
+| push 到 `main` | build + push，打 `latest` 和 `sha-xxxxxxx` 两个 tag |
 | push tag `v1.2.3` | build + push，打 `1.2.3`、`1.2`、`1`、`latest` |
-| 提 PR | 只 build 验证，不 push |
+| push 到其它分支（feat/xxx 等） | 不触发 |
+| 提 PR | 不触发 |
 | 手动 `Run workflow` | 可指定额外 tag，比如 `manual-2026-05` |
 
 ### 镜像标签策略
